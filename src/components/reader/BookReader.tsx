@@ -1,3 +1,5 @@
+// src/components/reader/BookReader.tsx
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -7,9 +9,9 @@ import { FREE_FRAGMENTS_LIMIT } from '@/lib/constants';
 import { LoadingOverlay } from '@/components/ui';
 import { FragmentReader } from './FragmentReader';
 import { TableOfContents } from './TableOfContents';
-import type { 
-  LocalizedBook, 
-  LocalizedChapter, 
+import type {
+  LocalizedBook,
+  LocalizedChapter,
   LocalizedFragment,
   ChapterProgress,
 } from '@/types';
@@ -37,41 +39,48 @@ export function BookReader({
   isFirstBook,
   hasChapterOneReward,
 }: BookReaderProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { openModal } = useModal();
   const user = useAppStore((state) => state.user);
-  const sessionFragmentsRead = useAppStore((state) => state.sessionFragmentsRead);
-  const incrementSessionFragments = useAppStore((state) => state.incrementSessionFragments);
-  
+  const sessionFragmentsRead = useAppStore(
+    (state) => state.sessionFragmentsRead,
+  );
+  const incrementSessionFragments = useAppStore(
+    (state) => state.incrementSessionFragments,
+  );
+
   // State
   const [currentChapterId, setCurrentChapterId] = useState<string>(
-    initialChapterId || chapters[0]?.id || ''
+    initialChapterId || chapters[0]?.id || '',
   );
-  const [currentFragmentIndex, setCurrentFragmentIndex] = useState(initialFragmentIndex);
+  const [currentFragmentIndex, setCurrentFragmentIndex] =
+    useState(initialFragmentIndex);
   const [fragments, setFragments] = useState<LocalizedFragment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showTOC, setShowTOC] = useState(false);
-  const [chapterProgress, setChapterProgress] = useState<Record<string, ChapterProgress>>({});
-  
+  const [chapterProgress, setChapterProgress] = useState<
+    Record<string, ChapterProgress>
+  >({});
+
   // Calculate total fragments read in this book (session-based for anonymous)
   const fragmentsReadInBook = sessionFragmentsRead[book.id] || 0;
-  
+
   // Current chapter
   const currentChapter = chapters.find((c) => c.id === currentChapterId);
   const currentChapterNumber = currentChapter?.chapterNumber || 1;
   const isChapterOne = currentChapterNumber === 1;
-  
+
   // Determine which chapters are locked
   const getLockedChapters = useCallback((): Set<string> => {
     const locked = new Set<string>();
-    
+
     // If user owns the book, nothing is locked
     if (userOwnsBook) return locked;
-    
+
     // Check each chapter
     for (const chapter of chapters) {
       const chapterNum = chapter.chapterNumber;
-      
+
       if (chapterNum === 1) {
         // Chapter 1 logic
         if (fragmentsReadInBook >= FREE_FRAGMENTS_LIMIT) {
@@ -94,20 +103,29 @@ export function BookReader({
         }
       }
     }
-    
+
     return locked;
-  }, [userOwnsBook, user, isFirstBook, hasChapterOneReward, chapters, fragmentsReadInBook]);
-  
+  }, [
+    userOwnsBook,
+    user,
+    isFirstBook,
+    hasChapterOneReward,
+    chapters,
+    fragmentsReadInBook,
+  ]);
+
   const lockedChapters = getLockedChapters();
-  
-  // Fetch fragments for current chapter
+
+  // Fetch fragments for current chapter (re-fetches when language changes)
   useEffect(() => {
     async function fetchFragments() {
       if (!currentChapterId) return;
-      
+
       setLoading(true);
       try {
-        const response = await fetch(`/api/books/fragments?chapterId=${currentChapterId}`);
+        const response = await fetch(
+          `/api/books/fragments?chapterId=${currentChapterId}&lang=${language}`,
+        );
         if (response.ok) {
           const data = await response.json();
           setFragments(data.fragments);
@@ -118,53 +136,56 @@ export function BookReader({
         setLoading(false);
       }
     }
-    
+
     fetchFragments();
-  }, [currentChapterId]);
-  
+  }, [currentChapterId, language]);
+
   // Check access when navigating to next fragment
-  const checkAccessAndNavigate = useCallback((nextIndex: number) => {
-    const totalFragmentsRead = fragmentsReadInBook + 1;
-    
-    // Check if we're past the free limit
-    if (totalFragmentsRead > FREE_FRAGMENTS_LIMIT && !userOwnsBook) {
-      if (!user) {
-        // Not logged in - prompt to sign up
-        openModal('auth', { 
-          mode: 'signup',
-          reward: isFirstBook,
-          bookId: book.id,
-        });
-        return false;
-      } else if (isChapterOne && isFirstBook && hasChapterOneReward) {
-        // Logged in, first book, chapter 1 - can continue
-        return true;
-      } else {
-        // Needs donation
-        openModal('donation', { bookId: book.id });
-        return false;
+  const checkAccessAndNavigate = useCallback(
+    (nextIndex: number) => {
+      const totalFragmentsRead = fragmentsReadInBook + 1;
+
+      // Check if we're past the free limit
+      if (totalFragmentsRead > FREE_FRAGMENTS_LIMIT && !userOwnsBook) {
+        if (!user) {
+          // Not logged in - prompt to sign up
+          openModal('auth', {
+            mode: 'signup',
+            reward: isFirstBook,
+            bookId: book.id,
+          });
+          return false;
+        } else if (isChapterOne && isFirstBook && hasChapterOneReward) {
+          // Logged in, first book, chapter 1 - can continue
+          return true;
+        } else {
+          // Needs donation
+          openModal('donation', { bookId: book.id });
+          return false;
+        }
       }
-    }
-    
-    return true;
-  }, [
-    fragmentsReadInBook, 
-    userOwnsBook, 
-    user, 
-    isFirstBook, 
-    isChapterOne, 
-    hasChapterOneReward, 
-    openModal, 
-    book.id
-  ]);
-  
+
+      return true;
+    },
+    [
+      fragmentsReadInBook,
+      userOwnsBook,
+      user,
+      isFirstBook,
+      isChapterOne,
+      hasChapterOneReward,
+      openModal,
+      book.id,
+    ],
+  );
+
   // Handle navigation
   const handleNext = useCallback(() => {
     if (currentFragmentIndex < fragments.length - 1) {
       if (checkAccessAndNavigate(currentFragmentIndex + 1)) {
         setCurrentFragmentIndex((prev) => prev + 1);
         incrementSessionFragments(book.id);
-        
+
         // Update progress on server if logged in
         if (user) {
           fetch('/api/progress', {
@@ -181,7 +202,9 @@ export function BookReader({
       }
     } else {
       // End of chapter - check if next chapter is available
-      const currentChapterIdx = chapters.findIndex((c) => c.id === currentChapterId);
+      const currentChapterIdx = chapters.findIndex(
+        (c) => c.id === currentChapterId,
+      );
       if (currentChapterIdx < chapters.length - 1) {
         const nextChapter = chapters[currentChapterIdx + 1];
         if (!lockedChapters.has(nextChapter.id)) {
@@ -194,10 +217,10 @@ export function BookReader({
       }
     }
   }, [
-    currentFragmentIndex, 
-    fragments, 
-    checkAccessAndNavigate, 
-    incrementSessionFragments, 
+    currentFragmentIndex,
+    fragments,
+    checkAccessAndNavigate,
+    incrementSessionFragments,
     book.id,
     user,
     currentChapterId,
@@ -205,13 +228,15 @@ export function BookReader({
     lockedChapters,
     openModal,
   ]);
-  
+
   const handlePrevious = useCallback(() => {
     if (currentFragmentIndex > 0) {
       setCurrentFragmentIndex((prev) => prev - 1);
     } else {
       // Beginning of chapter - go to previous chapter
-      const currentChapterIdx = chapters.findIndex((c) => c.id === currentChapterId);
+      const currentChapterIdx = chapters.findIndex(
+        (c) => c.id === currentChapterId,
+      );
       if (currentChapterIdx > 0) {
         const prevChapter = chapters[currentChapterIdx - 1];
         setCurrentChapterId(prevChapter.id);
@@ -220,26 +245,29 @@ export function BookReader({
       }
     }
   }, [currentFragmentIndex, chapters, currentChapterId]);
-  
+
   // Handle going to previous chapter's last fragment
   useEffect(() => {
     if (currentFragmentIndex === -1 && fragments.length > 0) {
       setCurrentFragmentIndex(fragments.length - 1);
     }
   }, [currentFragmentIndex, fragments.length]);
-  
-  const handleSelectChapter = useCallback((chapterId: string) => {
-    if (!lockedChapters.has(chapterId)) {
-      setCurrentChapterId(chapterId);
-      setCurrentFragmentIndex(0);
-      setShowTOC(false);
-    }
-  }, [lockedChapters]);
-  
+
+  const handleSelectChapter = useCallback(
+    (chapterId: string) => {
+      if (!lockedChapters.has(chapterId)) {
+        setCurrentChapterId(chapterId);
+        setCurrentFragmentIndex(0);
+        setShowTOC(false);
+      }
+    },
+    [lockedChapters],
+  );
+
   if (loading || !currentChapter) {
     return <LoadingOverlay />;
   }
-  
+
   return (
     <>
       <FragmentReader
@@ -254,7 +282,7 @@ export function BookReader({
         onClose={onClose}
         onOpenTOC={() => setShowTOC(true)}
       />
-      
+
       {showTOC && (
         <TableOfContents
           bookTitle={book.title}
